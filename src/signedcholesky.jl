@@ -1,3 +1,4 @@
+
 module SignedChol
 
 ##########################
@@ -6,20 +7,30 @@ module SignedChol
 
 using LinearAlgebra 
 
-import LinearAlgebra: checksquare, RealHermSymComplexHerm, 
-        BlasInt, checknonsingular, eigencopy_oftype
-import Base: require_one_based_indexing, copy, show
+import LinearAlgebra: 
+        checksquare, 
+        RealHermSymComplexHerm, 
+        BlasInt, 
+        checknonsingular, 
+        eigencopy_oftype
+
+import Base: 
+        require_one_based_indexing, 
+        copy, 
+        show
 
 export signedcholesky, signedcholesky!
-
-
 
 
 """
     SignedCholesky{T,S} <: Factorization
 
-A factorization object representing the signed Cholesky decomposition of a matrix.
-For a symmetric/Hermitian matrix M, computes F and signs S such that M ≈ F * Diagonal(S) * F'.
+
+Represents a signed Cholesky-type factorization
+
+    M ≈ F * Diagonal(signs) * F'
+
+where `F` is triangular and `signs ∈ {-1,0,1}`.
 
 # Fields
 - `factors::S`: Storage for the triangular factor F
@@ -40,60 +51,97 @@ struct SignedCholesky{T,S<:AbstractMatrix} <: Factorization{T}
     end
 end
 
-function SignedCholesky(A::AbstractMatrix{T},signs::Vector{Int8}, uplo::Symbol, info::Integer) where {T}
-    if uplo == :L
-        return SignedCholesky{T,typeof(A)}(A,signs, 'L', info)
-    elseif uplo == :U
-        return SignedCholesky{T,typeof(A)}(A,signs, 'U', info)
-    else
-        throw(ArgumentError("uplo must be :L or :U"))
-    end
+# Constructors 
+
+"""
+    SignedCholesky(A::AbstractMatrix{T}, signs::Vector{Int8}, uplo::Symbol, info::Integer) where {T}
+
+Constructs a SignedCholesky factorization from a matrix M, sign vector S, 
+storage type (upper or lower), and an info status code.
+
+# Returns
+- A SignedCholesky{T, typeof(A)} object.
+"""
+function SignedCholesky(A::AbstractMatrix{T}, signs::Vector{Int8}, uplo::Symbol, info::Integer) where {T}
+    uplo_char = uplo === :L ? 'L' : uplo === :U ? 'U' : throw(ArgumentError("uplo must be :L or :U"))
+    SignedCholesky{T,typeof(A)}(A, signs, uplo_char, info)
 end
 
 SignedCholesky(A::AbstractMatrix{T}, signs::Vector{Int8}, uplo::AbstractChar, info::Integer) where {T} =
     SignedCholesky{T,typeof(A)}(A, signs,uplo, info)
 
-# backwards-compatible constructors (remove with Julia 2.0)
-
 SignedCholesky(U::UpperTriangular{T}) where {T} = SignedCholesky{T,typeof(U.data)}(U.data, ones(Int8,size(U,1)), 'U', 0)
 SignedCholesky(L::LowerTriangular{T}) where {T} = SignedCholesky{T,typeof(L.data)}(L.data, ones(Int8,size(L,1)), 'L', 0)
 
-# iteration for destructuring into components
-Base.iterate(F::SignedCholesky) =  (F.uplo == 'L' ? F.L : F.U, Val(1))
-Base.iterate(F::SignedCholesky,::Val{1}) = (F.S, Val(2))
-Base.iterate(F::SignedCholesky,::Val{2}) = nothing
 
+# Iteration 
+Base.iterate(F::SignedCholesky) = (F.uplo == 'L' ? F.L : F.U, Val(1))
+Base.iterate(F::SignedCholesky, ::Val{1}) = (F.S, Val(2))
+Base.iterate(F::SignedCholesky, ::Val{2}) = nothing
+
+# Properties 
 Base.propertynames(F::SignedCholesky, private::Bool=false) =
-    (:U, :L, :UL, :S, (private ? fieldnames(typeof(F)) : ())...)
+    (:U, :L, :S, (private ? fieldnames(typeof(F)) : ())...)
 
-function Base.getproperty(C::SignedCholesky, s::Symbol)
-    Cf = getfield(C, :factors)
-    Cu = getfield(C, :uplo)
+"""
+    Base.getproperty(F::SignedCholesky, s::Symbol)
+
+Accesses properties of the SignedCholesky factorization object.
+"""
+function Base.getproperty(F::SignedCholesky, s::Symbol)
+    Ff = getfield(F, :factors)
+    Fu = getfield(F, :uplo)
     if s === :U
-        return Cu == 'U' ? UpperTriangular(Cf) : UpperTriangular(Cf')
+        return Fu == 'U' ? UpperTriangular(Ff) : UpperTriangular(Ff')
     elseif s === :L
-        return Cu == 'L' ? LowerTriangular(Cf) : LowerTriangular(Cf')
+        return Fu == 'L' ? LowerTriangular(Ff) : LowerTriangular(Ff')
     elseif s === :S
-        return getfield(C, :signs)
+        return getfield(F, :signs)
     else
-        return getfield(C, s)
+        return getfield(F, s)
     end
 end
 
 
-
-# make a copy that allow inplace Cholesky factorization
+# Type conversions and copies
 choltype(A) = promote_type(typeof(sqrt(oneunit(eltype(A)))), Float32)
 cholcopy(A::AbstractMatrix) = eigencopy_oftype(A, choltype(A))
+
+
+SignedCholesky{T}(F::SignedCholesky) where {T} =
+    SignedCholesky{T,typeof(convert(AbstractMatrix{T}, F.factors))}(
+        convert(AbstractMatrix{T}, F.factors), convert(Vector{Int8}, F.signs), F.uplo, F.info)
+
+        
+Factorization{T}(F::SignedCholesky{T}) where {T} = F
+Factorization{T}(F::SignedCholesky) where {T} = SignedCholesky{T}(F)
+
+
+
+# Matrix reconstruction
+
+# AbstractMatrix(F::SignedCholesky) = 
+#     F.uplo == 'U' ? F.U' * Diagonal(F.S) * F.U : F.L * Diagonal(F.S) * F.L'
+
+AbstractArray(F::SignedCholesky) = AbstractMatrix(F)
+Matrix(F::SignedCholesky) = Array(AbstractArray(F))
+Array(F::SignedCholesky) = Matrix(F)
 
 
 ## ==============================
 ## generic computation of signed cholesky (no pivoting)
 ## ============================== 
 
+"""
+    _sgndchol!(x::Number)
+
+Compute signed Cholesky decomposition of a scalar.
+
+# Returns
+- A tuple (factor, sign, info) where sign ∈ {-1, 0, 1}.
+"""
 # _sgndchol!. Internal methods for calling unpivoted signed Cholesky
 
-##signed cholesky for Numbers 
 function _sgndchol!(x::T) where T <: Number 
     rx = real(x)
     ax = abs(rx)
@@ -103,115 +151,123 @@ function _sgndchol!(x::T) where T <: Number
     if ax ≤ tol
         return (zero(x), Int8(0), BlasInt(1))
     end
+
     s  = rx > 0 ? Int8(1) : Int8(-1)
     fx = sqrt(ax)
     fval  = convert(promote_type(typeof(x), typeof(fx)), fx)
     return (fval, s, BlasInt(rx != s*ax))
 end
 
-# _sgndchol!(A::AbstractMatrix, ::Val{:L})
-
-function _sgndchol!(A::AbstractMatrix, ::Type{LowerTriangular})
-    require_one_based_indexing(A)
-    n = checksquare(A)
+"""
+    _sgndchol!(M::AbstractMatrix, uplo::Type{T}) where {T<:Union{UpperTriangular,LowerTriangular}}  
+Compute the signed Cholesky factorization of matrix M in-place.
+# Returns
+- A tuple (F, S, info) where F is the triangular factor, S is the sign vector, and info is the status code.
+"""
+function _sgndchol!(M::AbstractMatrix, ::Type{LowerTriangular})
+    require_one_based_indexing(M)
+    n = checksquare(M)
     S = Vector{Int8}(undef,n)
-    realdiag = eltype(A) <: Complex
+    realdiag = eltype(M) <: Complex
 
     @inbounds begin
         for k = 1:n
-            Akk = realdiag ? real(A[k,k]) : A[k,k]
+            Mkk = realdiag ? real(M[k,k]) : M[k,k]
             #schur complement
             for i = 1:k - 1
-                Akk -= S[i] * (realdiag ? abs2(A[k,i]) : A[k,i]*A[k,i]')
+                Mkk -= S[i] * (realdiag ? abs2(M[k,i]) : M[k,i]*M[k,i]')
             end
-            #classify pivots             
-            Akk, sgn, info = _sgndchol!(Akk)
-            info != 0 && return LowerTriangular(A), S, BlasInt(k)
+                      
+            Mkk, sgn, info = _sgndchol!(Mkk)
+            info != 0 && return LowerTriangular(M), S, BlasInt(k)
 
-            A[k,k] = Akk
+            M[k,k] = Mkk
             S[k] = sgn
-            AkkInv = one(Akk)/Akk
+            MkkInv = one(Mkk)/Mkk
             #column update
-            @simd for i = k+1:n
-                for j = 1:k-1
-                    A[i,k] -= S[j] * A[i,j] * A[k,j]'
+            for i = k+1:n
+                @simd for j = 1:k-1
+                    M[i,k] -= S[j] * M[i,j] * M[k,j]'
                 end
-                A[i,k] = A[i,k] * AkkInv' * S[k]
+                M[i,k] = M[i,k] * MkkInv' * S[k]
             end
         end
     end
-    return LowerTriangular(A), S, convert(BlasInt, 0)
+    return LowerTriangular(M), S, convert(BlasInt, 0)
 end
 
-function _sgndchol!(A::AbstractMatrix, ::Type{UpperTriangular})
-    require_one_based_indexing(A)
-    n = checksquare(A)
+function _sgndchol!(M::AbstractMatrix, ::Type{UpperTriangular})
+    require_one_based_indexing(M)
+    n = checksquare(M)
     S = Vector{Int8}(undef, n)
-    realdiag = eltype(A) <: Complex
+    realdiag = eltype(M) <: Complex
 
     @inbounds for k = 1:n
-        Akk = realdiag ? real(A[k,k]) : A[k,k]
+        Mkk = realdiag ? real(M[k,k]) : M[k,k]
         # schur complement 
         for i = 1:k-1
-            Akk -= S[i] * (realdiag ? abs2(A[i,k]) : A[i,k]' * A[i,k])
+            Mkk -= S[i] * (realdiag ? abs2(M[i,k]) : M[i,k]' * M[i,k])
         end
 
-        Akk, sgn, info = _sgndchol!(Akk)
-        info != 0 && return UpperTriangular(A), S, BlasInt(k)
+        Mkk, sgn, info = _sgndchol!(Mkk)
+        info != 0 && return UpperTriangular(M), S, BlasInt(k)
 
-        A[k,k] = Akk
+        M[k,k] = Mkk
         S[k] = sgn
-        AkkInv = one(Akk) / Akk
+        MkkInv = one(Mkk) / Mkk
         # Row update
-        @simd for j = k+1:n
-            for i = 1:k-1
-                A[k,j] -= S[i] * A[i,k]' * A[i,j]
+        for i = k+1:n
+            @simd for j = 1:k-1
+                M[k,i] -= S[j] * M[j,k]' * M[j,i]
             end
-            A[k,j] = A[k,j] * AkkInv' * S[k]
+            M[k,i] = M[k,i] * MkkInv' * S[k]
         end
     end
 
-    return UpperTriangular(A), S, BlasInt(0)
+    return UpperTriangular(M), S, BlasInt(0)
 end
 
 
-## for StridedMatrices, check that matrix is symmetric/Hermitian
+# --- Public API ---
+
+# for StridedMatrices, check that matrix is symmetric/Hermitian
 
 # signed cholesky!. Destructive methods for computing signed Cholesky factorization of real symmetric
 # or Hermitian matrix
 ## No pivoting (default) 
-function signedcholesky!(A::RealHermSymComplexHerm, ::NoPivot = NoPivot(); check::Bool = true)
-    C, S, info = _sgndchol!(A.data, LowerTriangular)
+function signedcholesky!(M::RealHermSymComplexHerm, ::NoPivot = NoPivot(); check::Bool = true)
+    uplo = M.uplo == 'L' ? LowerTriangular : UpperTriangular
+    F, S, info = _sgndchol!(M.data, uplo)
     check && checknonsingular(info)
-    return SignedCholesky(C.data, S, 'L', info)
+    return SignedCholesky(F.data, S, M.uplo, info)
 end
 
 
 ### for AbstractMatrix, check that matrix is symmetric/Hermitian
-function signedcholesky!(A::AbstractMatrix,::NoPivot = NoPivot();check::Bool = true)
-    checksquare(A)
+function signedcholesky!(M::AbstractMatrix,::NoPivot = NoPivot();check::Bool = true)
+    checksquare(M)
 
     # symmetry / Hermitian check
-    if eltype(A) <: Real
-        issymmetric(A) || throw(ArgumentError("matrix must be symmetric"))
-        As = Symmetric(A)
+    if eltype(M) <: Real
+        issymmetric(M) || throw(ArgumentError("matrix must be symmetric"))
+        Ms = Symmetric(M)
     else
-        ishermitian(A) || throw(ArgumentError("matrix must be Hermitian"))
-        As = Hermitian(A)
+        ishermitian(M) || throw(ArgumentError("matrix must be Hermitian"))
+        Ms = Hermitian(M)
     end
 
-    return signedcholesky!(As, NoPivot(); check)
+    return signedcholesky!(Ms, NoPivot(); check)
 end
 
-@deprecate signedcholesky!(A::StridedMatrix, ::Val{false}; check::Bool = true) signedcholesky!(A, NoPivot(); check) false
-@deprecate signedcholesky!(A::RealHermSymComplexHerm, ::Val{false}; check::Bool = true) signedcholesky!(A, NoPivot(); check) false
+@deprecate signedcholesky!(M::StridedMatrix, ::Val{false}; check::Bool = true) signedcholesky!(M, NoPivot(); check) false
+@deprecate signedcholesky!(M::RealHermSymComplexHerm, ::Val{false}; check::Bool = true) signedcholesky!(M, NoPivot(); check) false
 
-function signedcholesky(A::AbstractMatrix, args...;kwargs...)
-    return signedcholesky!(copy(A), args...; kwargs...)
+function signedcholesky(M::AbstractMatrix, args...;kwargs...)
+    return signedcholesky!(copy(M), args...; kwargs...)
 end
 
-signedcholesky(A::RealHermSymComplexHerm, args...; kwargs...) =
-    signedcholesky!(copy(A), args...; kwargs...)
+signedcholesky(M::RealHermSymComplexHerm, args...; kwargs...) =
+    signedcholesky!(copy(M), args...; kwargs...)
 
 
 ### for AbstractMatrix, check that matrix is symmetric/Hermitian
@@ -222,17 +278,17 @@ signedcholesky(A::RealHermSymComplexHerm, args...; kwargs...) =
 # or Hermitian matrix
 ## No pivoting (default)
 
-signedcholesky(A::AbstractMatrix, ::NoPivot=NoPivot(); check::Bool = true) =
-    _signedcholesky(cholcopy(A); check)
-@deprecate signedcholesky(A::Union{StridedMatrix,RealHermSymComplexHerm{<:Real,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(A, NoPivot(); check) false
+signedcholesky(M::AbstractMatrix, ::NoPivot=NoPivot(); check::Bool = true) =
+    _signedcholesky(cholcopy(M); check)
+@deprecate signedcholesky(M::Union{StridedMatrix,RealHermSymComplexHerm{<:Real,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(M, NoPivot(); check) false
 
-function signedcholesky(A::AbstractMatrix{Float16}, ::NoPivot=NoPivot(); check::Bool = true)
-    X = _signedcholesky(cholcopy(A); check = check)
+function signedcholesky(M::AbstractMatrix{Float16}, ::NoPivot=NoPivot(); check::Bool = true)
+    X = _signedcholesky(cholcopy(M); check = check)
     return SignedCholesky{Float16}(X)
 end
-@deprecate signedcholesky(A::Union{StridedMatrix{Float16},RealHermSymComplexHerm{Float16,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(A, NoPivot(); check) false
+@deprecate signedcholesky(M::Union{StridedMatrix{Float16},RealHermSymComplexHerm{Float16,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(M, NoPivot(); check) false
 # allow packages like SparseArrays.jl to hook into here and redirect to out-of-place `cholesky`
-_signedcholesky(A::AbstractMatrix, args...; kwargs...) = signedcholesky!(A, args...; kwargs...)
+_signedcholesky(M::AbstractMatrix, args...; kwargs...) = signedcholesky!(M, args...; kwargs...)
 
 ## With pivoting
 
@@ -246,30 +302,12 @@ function signedcholesky(x::Number)
 end
 
 
-function SignedCholesky{T}(F::SignedCholesky) where T
-    Fnew = convert(AbstractMatrix{T}, F.factors)
-    Fsigns = convert(Vector{Int8}, F.signs)
-    SignedCholesky{T, typeof(Cnew)}(Fnew, Fsigns, F.uplo, F.info)
-end
-Factorization{T}(C::SignedCholesky{T}) where {T} = C
-Factorization{T}(C::SignedCholesky) where {T} = SignedCholesky{T}(C)
-
-AbstractMatrix(C::SignedCholesky) = C.uplo == 'U' ? C.U' * Diagonal(C.S) * C.U : C.L * Diagonal(C.S) * C.L'
-AbstractArray(C::SignedCholesky) = AbstractMatrix(C)
-Matrix(C::SignedCholesky) = Array(AbstractArray(C))
-Array(C::SignedCholesky) = Matrix(C)
-
-
-
-copy(C::SignedCholesky) = SignedCholesky(copy(C.factors), copy(C.signs), C.uplo, C.info)
-
-
-
 function show(io::IO, mime::MIME{Symbol("text/plain")}, C::SignedCholesky)
-    if C.info ==0
+    if issuccess(C)
         summary(io, C); println(io)
         println(io, "$(C.uplo) factor:")
         show(io, mime, C.uplo == 'L' ? C.L : C.U)
+        println(io, "\nsigns:")
         show(io, mime, C.S)
     else
         print(io, "Failed factorization of type $(typeof(C))")
@@ -277,108 +315,12 @@ function show(io::IO, mime::MIME{Symbol("text/plain")}, C::SignedCholesky)
 end
 
 
+copy(C::SignedCholesky) = SignedCholesky(copy(C.factors), copy(C.signs), C.uplo, C.info)
 
-# --------------  Pivoted Signed Cholesky ----------------
+size(C::SignedCholesky) = size(C.factors)
+size(C::SignedCholesky, dim::Integer) = size(C.factors, dim)
 
+issuccess(C::SignedCholesky) = C.info == 0
 
-struct SignedCholeskyPivoted{T,S<:AbstractMatrix,P<:AbstractVector{<:Integer}} <: Factorization{T}
-    factors::S
-    signs::Vector{Int8}
-    uplo::Char
-    piv::P
-    rank::BlasInt
-    tol::Real
-    info::BlasInt
-
-    function SignedCholeskyPivoted{T,S,P}(factors, signs, uplo, piv, rank, tol, info) where {T,S<:AbstractMatrix,P<:AbstractVector}
-        require_one_based_indexing(factors)
-        new{T,S,P}(factors, signs, uplo, piv, rank, tol, info)
-    end
-end
-SignedCholeskyPivoted(A::AbstractMatrix{T}, uplo::AbstractChar, piv::AbstractVector{<:Integer},
-                rank::Integer, tol::Real, info::Integer) where T =
-    SignedCholeskyPivoted{T,typeof(A),typeof(piv)}(A, uplo, piv, rank, tol, info)
-# backwards-compatible constructors (remove with Julia 2.0)
-@deprecate(SignedCholeskyPivoted{T,S}(factors, uplo, piv, rank, tol, info) where {T,S<:AbstractMatrix},
-           SignedCholeskyPivoted{T,S,typeof(piv)}(factors, uplo, piv, rank, tol, info), false)
-
-
-# iteration for destructuring into components
-Base.iterate(F::SignedCholeskyPivoted) =  (F.uplo == 'L' ? F.L : F.U, Val(1))
-Base.iterate(F::SignedCholeskyPivoted,::Val{1}) = (F.S, Val(2))
-Base.iterate(F::SignedCholeskyPivoted,::Val{2}) = nothing
-
-
-### Non BLAS/LAPACK element types (generic). Since generic fallback for pivoted signed Cholesky
-### is not implemented yet we throw an error
-signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::RowMaximum; tol = 0.0, check::Bool = true) =
-    throw(ArgumentError("generic pivoted signed Cholesky factorization is not implemented yet"))
-@deprecate signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::Val{true}; kwargs...) signedcholesky!(A, RowMaximum(); kwargs...) false
-
-function getproperty(C::SignedCholeskyPivoted{T}, d::Symbol) where {T}
-    Cfactors = getfield(C, :factors)
-    Cuplo    = getfield(C, :uplo)
-    if d === :U
-        return UpperTriangular(sym_uplo(Cuplo) == d ? Cfactors : copy(Cfactors'))
-    elseif d === :L
-        return LowerTriangular(sym_uplo(Cuplo) == d ? Cfactors : copy(Cfactors'))
-    elseif d === :p
-        return getfield(C, :piv)
-    elseif d === :P
-        n = size(C, 1)
-        P = zeros(T, n, n)
-        for i = 1:n
-            P[getfield(C, :piv)[i], i] = one(T)
-        end
-        return P
-    else
-        return getfield(C, d)
-    end
-end
-Base.propertynames(F::SignedCholeskyPivoted, private::Bool=false) =
-    (:U, :L, :p, :P, (private ? fieldnames(typeof(F)) : ())...)
-
-
-adjoint(C::Union{SignedCholesky,SignedCholeskyPivoted}) = C
-
-
-function AbstractMatrix(F::SignedCholeskyPivoted)
-    ip = invperm(F.p)
-    U = F.U[1:F.rank,ip]
-    U'U
-end
-AbstractArray(F::SignedCholeskyPivoted) = AbstractMatrix(F)
-Matrix(F::SignedCholeskyPivoted) = Array(AbstractArray(F))
-Array(F::SignedCholeskyPivoted) = Matrix(F)
-
-SignedCholeskyPivoted{T}(C::SignedCholeskyPivoted{T}) where {T} = C
-SignedCholeskyPivoted{T}(C::SignedCholeskyPivoted) where {T} =
-    SignedCholeskyPivoted(AbstractMatrix{T}(C.factors),C.uplo,C.piv,C.rank,C.tol,C.info)
-Factorization{T}(C::SignedCholeskyPivoted{T}) where {T} = C
-Factorization{T}(C::SignedCholeskyPivoted) where {T} = SignedCholeskyPivoted{T}(C)
-
-
-copy(C::SignedCholeskyPivoted) = SignedCholeskyPivoted(copy(C.factors), C.uplo, C.piv, C.rank, C.tol, C.info)
-
-
-function show(io::IO, mime::MIME{Symbol("text/plain")}, C::SignedCholeskyPivoted)
-    summary(io, C); println(io)
-    println(io, "$(C.uplo) factor with rank $(rank(C)):")
-    show(io, mime, C.uplo == 'U' ? C.U : C.L)
-    println(io, "\npermutation:")
-    show(io, mime, C.p)
-end
-
-
-
-
-
-# ------------- Combined --------
-
-
-size(C::Union{SignedCholesky, SignedCholeskyPivoted}) = size(C.factors)
-size(C::Union{SignedCholesky, SignedCholeskyPivoted}, d::Integer) = size(C.factors, d)
-
-issuccess(C::Union{SignedCholesky,SignedCholeskyPivoted}) = C.info == 0
 
 end #module 
