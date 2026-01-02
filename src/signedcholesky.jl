@@ -1,4 +1,4 @@
-module SignedChol
+module SignedCholesky
 
 """
     SignedChol

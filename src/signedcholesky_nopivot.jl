@@ -304,7 +304,7 @@ function show(io::IO, mime::MIME{Symbol("text/plain")}, C::SignedCholesky)
         println(io, "$(C.uplo) factor:")
         show(io, mime, C.uplo == 'L' ? C.L : C.U)
         println(io, "\nsigns:")
-        show(io, mime, C.S)
+        show(io, mime, C.s)
     else
         print(io, "Failed factorization of type $(typeof(C))")
     end
