@@ -1,3 +1,26 @@
+
+
+##########################
+# Signed Cholesky Factorization #
+##########################
+
+"""
+    SignedChol{T,S} <: Factorization
+
+
+Represents a signed Cholesky-type factorization
+
+    M ≈ F * Diagonal(signs) * F'
+
+up to floating-point roundoff, where `F` is triangular and `signs ∈ {-1,0,1}`.
+
+# Fields
+- `factors::S`: Storage for the triangular factor F
+- `signs::Vector{Int8}`: Sign corrections for each diagonal element
+- `uplo::Char`: 'L' for lower or 'U' for upper triangular storage
+- `info::BlasInt`: Status code (0 for success)
+"""
+
 struct SignedChol{T,S<:AbstractMatrix} <: Factorization{T}
     factors::S
     signs::Vector{Int8}
@@ -12,6 +35,15 @@ end
 
 # Constructors 
 
+"""
+    SignedChol(A::AbstractMatrix{T}, signs::Vector{Int8}, uplo::Symbol, info::Integer) where {T}
+
+Constructs a SignedChol factorization from a matrix M, sign vector S, 
+storage type (upper or lower), and an info status code.
+
+# Returns
+- A SignedChol{T, typeof(A)} object.
+"""
 function SignedChol(A::AbstractMatrix{T}, signs::Vector{Int8}, uplo::Symbol, info::Integer) where {T}
     uplo_char = uplo === :L ? 'L' : uplo === :U ? 'U' : throw(ArgumentError("uplo must be :L or :U"))
     SignedChol{T,typeof(A)}(A, signs, uplo_char, info)
@@ -26,13 +58,18 @@ SignedChol(L::LowerTriangular{T}) where {T} = SignedChol{T,typeof(L.data)}(L.dat
 
 # Iteration 
 Base.iterate(F::SignedChol) = (F.uplo == 'L' ? F.L : F.U, Val(1))
-Base.iterate(F::SignedChol, ::Val{1}) = (F.S, Val(2))
+Base.iterate(F::SignedChol, ::Val{1}) = (F.s, Val(2))
 Base.iterate(F::SignedChol, ::Val{2}) = nothing
 
 # Properties 
 Base.propertynames(F::SignedChol, private::Bool=false) =
     (:U, :L, :s, :S, (private ? fieldnames(typeof(F)) : ())...)
 
+"""
+    Base.getproperty(F::SignedChol, s::Symbol)
+
+Accesses properties of the SignedChol factorization object.
+"""
 function Base.getproperty(F::SignedChol, s::Symbol)
     Ff = getfield(F, :factors)
     Fu = getfield(F, :uplo)
@@ -84,10 +121,22 @@ Array(F::SignedChol) = Matrix(F)
 ## generic computation of signed cholesky (no pivoting)
 ## ============================== 
 
+"""
+    _sgndchol!(x::Number)
+
+Compute signed Cholesky decomposition of a scalar.
+
+# Returns
+- A tuple (factor, sign, info) where sign ∈ {-1, 0, 1}.
+"""
+# _sgndchol!. Internal methods for calling unpivoted signed Cholesky
+
 function _sgndchol!(x::T) where T <: Number 
     rx = real(x)
     ax = abs(rx)
+    #Use machine safe minimum for floating point numbers, and exact result otherwise (for rationals)
     tol = T <: AbstractFloat ? floatmin(T) : T(0)
+    # Treat tiny pivots as zero
     if ax ≤ tol
         return (zero(x), Int8(0), BlasInt(1))
     end
@@ -99,6 +148,14 @@ function _sgndchol!(x::T) where T <: Number
 end
 
 
+"""
+    _sgndchol!(M, ::Type{LowerTriangular})
+
+Compute the unpivoted signed Cholesky factorization of `M` in-place,
+storing the result in the lower triangle.
+
+Throws `ZeroPivotException` if a zero pivot is encountered.
+"""
 function _sgndchol!(M::AbstractMatrix, ::Type{LowerTriangular})
     require_one_based_indexing(M)
     n = checksquare(M)
@@ -108,6 +165,7 @@ function _sgndchol!(M::AbstractMatrix, ::Type{LowerTriangular})
     @inbounds begin
         for k = 1:n
             Mkk = realdiag ? real(M[k,k]) : M[k,k]
+            #schur complement
             for i = 1:k - 1
                 Mkk -= S[i] * (realdiag ? abs2(M[k,i]) : M[k,i]*M[k,i]')
             end
@@ -118,6 +176,7 @@ function _sgndchol!(M::AbstractMatrix, ::Type{LowerTriangular})
             M[k,k] = Mkk
             S[k] = sgn
             MkkInv = one(Mkk)/Mkk
+            #column update
             for i = k+1:n
                 @simd for j = 1:k-1
                     M[i,k] -= S[j] * M[i,j] * M[k,j]'
@@ -137,6 +196,7 @@ function _sgndchol!(M::AbstractMatrix, ::Type{UpperTriangular})
 
     @inbounds for k = 1:n
         Mkk = realdiag ? real(M[k,k]) : M[k,k]
+        # schur complement 
         for i = 1:k-1
             Mkk -= S[i] * (realdiag ? abs2(M[i,k]) : M[i,k]' * M[i,k])
         end
@@ -147,6 +207,7 @@ function _sgndchol!(M::AbstractMatrix, ::Type{UpperTriangular})
         M[k,k] = Mkk
         S[k] = sgn
         MkkInv = one(Mkk) / Mkk
+        # Row update
         for i = k+1:n
             @simd for j = 1:k-1
                 M[k,i] -= S[j] * M[j,k]' * M[j,i]
@@ -161,6 +222,14 @@ end
 
 # --- Public API ---
 
+# for StridedMatrices, check that matrix is symmetric/Hermitian
+
+# signed cholesky!. Destructive methods for computing signed Cholesky factorization of real symmetric
+# or Hermitian matrix
+## No pivoting (default) 
+
+
+
 function signedcholesky!(M::RealHermSymComplexHerm, ::NoPivot = NoPivot(); check::Bool = true)
     uplo = M.uplo == 'L' ? LowerTriangular : UpperTriangular
     F, S, info = _sgndchol!(M.data, uplo)
@@ -169,15 +238,17 @@ function signedcholesky!(M::RealHermSymComplexHerm, ::NoPivot = NoPivot(); check
 end
 
 
+### for AbstractMatrix, check that matrix is symmetric/Hermitian
 function signedcholesky!(M::AbstractMatrix,::NoPivot = NoPivot();check::Bool = true)
     checksquare(M)
 
+    # symmetry / Hermitian check
     if eltype(M) <: Real
         issymmetric(M) || throw(ArgumentError("matrix must be symmetric"))
-        Ms = Symmetric(M)
+        Ms = Symmetric(M, :L)
     else
         ishermitian(M) || throw(ArgumentError("matrix must be Hermitian"))
-        Ms = Hermitian(M)
+        Ms = Hermitian(M, :L)
     end
 
     return signedcholesky!(Ms, NoPivot(); check)
@@ -194,6 +265,14 @@ signedcholesky(M::RealHermSymComplexHerm, args...; kwargs...) =
     signedcholesky!(copy(M), args...; kwargs...)
 
 
+### for AbstractMatrix, check that matrix is symmetric/Hermitian
+
+
+
+# cholesky. Non-destructive methods for computing Cholesky factorization of real symmetric
+# or Hermitian matrix
+## No pivoting (default)
+
 _signedcholesky(M::AbstractMatrix, args...; kwargs...) = signedcholesky!(M, args...; kwargs...)
 
 signedcholesky(M::AbstractMatrix, ::NoPivot=NoPivot(); check::Bool = true) =
@@ -205,8 +284,11 @@ function signedcholesky(M::AbstractMatrix{Float16}, ::NoPivot=NoPivot(); check::
     return SignedChol{Float16}(X)
 end
 @deprecate signedcholesky(M::Union{StridedMatrix{Float16},RealHermSymComplexHerm{Float16,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(M, NoPivot(); check) false
+# allow packages like SparseArrays.jl to hook into here and redirect to out-of-place `cholesky`
 
 
+
+## Number
 function signedcholesky(x::Number)
     C, S, info = _sgndchol!(x)
     xf = fill(C, 1, 1)
@@ -234,3 +316,28 @@ size(C::SignedChol) = size(C.factors)
 size(C::SignedChol, dim::Integer) = size(C.factors, dim)
 
 issuccess(C::SignedChol) = C.info == 0
+
+# zero pivot exception 
+
+struct ZeroPivotException <: Exception
+    k::Int
+end
+
+Base.showerror(io::IO, e::ZeroPivotException) =
+    if e.k == 1
+        print(io,
+            "SignedCholesky failed: zero pivot encountered at index 1.\n",
+            "A symmetric permutation may resolve this.\n",
+            "Try pivoting or LDLᵀ (Bunch–Kaufman)."
+        )
+    else
+        print(io,
+            "SignedCholesky failed: zero pivot encountered at index ",
+            e.k, ".\n",
+            "The matrix is not factorizable as L*S*Lᵀ using 1×1 pivots.\n",
+            "Try pivoting or LDLᵀ (Bunch–Kaufman)."
+        )
+    end
+
+checkzeropivots(info::BlasInt) =
+    info > 0 ? throw(ZeroPivotException(info)) : nothing
