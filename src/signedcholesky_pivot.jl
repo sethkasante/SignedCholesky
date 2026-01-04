@@ -62,11 +62,11 @@ Base.propertynames(F::SignedCholeskyPivoted, private::Bool=false) =
 
 
 
-function AbstractMatrix(F::SignedCholeskyPivoted)
-    ip = invperm(F.p)
-    U = F.U[1:F.rank,ip]
-    U'U
-end
+# function AbstractMatrix(F::SignedCholeskyPivoted)
+#     ip = invperm(F.p)
+#     U = F.U[1:F.rank,ip]
+#     U'U
+# end
 AbstractArray(F::SignedCholeskyPivoted) = AbstractMatrix(F)
 Matrix(F::SignedCholeskyPivoted) = Array(AbstractArray(F))
 Array(F::SignedCholeskyPivoted) = Matrix(F)
