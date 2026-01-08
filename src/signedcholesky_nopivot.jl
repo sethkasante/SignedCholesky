@@ -328,22 +328,6 @@ Base.showerror(io::IO, e::ZeroPivotException) =
             e.k, ".\n",
             "Try a pivoted factorization using signedcholesky(M,Pivoted()).")
 
-# Base.showerror(io::IO, e::ZeroPivotException) =
-#     if e.k == 1
-#         print(io,
-#             "Unpivoted signed Cholesky failed at the first pivot.\n",
-#             "The leading diagonal is zero or unstable.\n",
-#             "Try a symmetric permutation or a pivoted factorization using signedcholesky(M,Pivoted())."
-#         )
-#     else
-#         print(io,
-#             "Unpivoted signed Cholesky failed at pivot index ",
-#             e.k, ".\n",
-#             "The matrix may be singular, or may require 2×2 pivots.\n",
-#             "Try pivoted LDLᵀ (Bunch–Kaufman)..."
-#         )
-#     end
-
 
 checkzeropivots(info::BlasInt) =
     info > 0 ? throw(ZeroPivotException(info)) : nothing
