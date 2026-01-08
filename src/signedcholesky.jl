@@ -53,7 +53,7 @@ include("linalg.jl")
 export
     # Factorization types
     SignedChol,
-    SignedCholeskyPivoted,
+    SignedCholPivoted
 
     # Main user-facing functions
     signedcholesky,

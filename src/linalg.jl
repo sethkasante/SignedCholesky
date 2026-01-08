@@ -33,7 +33,7 @@ end
 
 """
     det(F::SignedCholesky)
-    det(F::SignedCholeskyPivoted)
+    det(F::SignedCholPivoted)
 
 Compute the determinant of the original matrix using its signed
 Cholesky-type factorization.
