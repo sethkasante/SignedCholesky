@@ -1,6 +1,6 @@
 
 ##########################
-# Signed Cholesky Factorization #
+# Signed Cholesky Factorization  with Pivoting#
 ##########################
 
 export signedcholesky,
@@ -290,6 +290,66 @@ function _sgndchol!(x::T) where T <: Number
     return (fval, s, BlasInt(rx != s*ax))
 end
 
+"""
+    _find_first_pair!(M, piv, tol)
+
+Searches for a pair (i, j) such that the 2×2 principal submatrix
+
+    [ M_ii  M_ij ]
+    [ M_ji  M_jj ]
+
+has nonzero determinant and also ensures that two successive 1×1 signed
+Cholesky pivots exist.
+
+If found, the matrix is symmetrically permuted so that this pair
+occupies positions with the larger-magnitude diagonal
+placed first.
+"""
+function _find_first_pair!(M::AbstractMatrix{T},
+    piv::AbstractVector{<:Integer},tol) where T
+
+    n = checksquare(M)
+    realdiag = T <: Complex
+
+    @inbounds for i in 1:n-1
+        ai = realdiag ? real(M[i,i]) : M[i,i] # force
+        for j in i+1:n
+            aj = realdiag ? real(M[j,j]) : M[j,j]
+            bij = M[i,j]
+            det = ai*aj - bij*bij'
+
+            if abs(det) > tol
+                # Decide ordering: larger diagonal first
+                if abs(ai) ≥ abs(aj)
+                    p1, p2 = i, j
+                else
+                    p1, p2 = j, i
+                end
+                # perform swaps 
+                if p1 != 1
+                    _sym_swap!(M, 1, p1)
+                    piv[1], piv[p1] = piv[p1], piv[1]
+                end
+                if p2 != 1 && p2 != 2
+                    _sym_swap!(M, 2, p2)
+                    piv[2], piv[p2] = piv[p2], piv[2]
+                end
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+
+""" 
+    _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
+
+This routine computes a signed Cholesky factorization using only 1×1 pivots.
+It preselects the first two pivots globally, then applies a relaxed column-maximum pivoting strategy.
+If a 2×2 pivot is required for stability, the routine terminates with info > 0.
+"""
 
 function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
     n = checksquare(M)
@@ -304,47 +364,17 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
     # machine safe minimum tolerance
     tol  = T <: AbstractFloat ? floatmin(real(T)) : zero(real(T)) 
     
-    realdiag = eltype(M) <: Complex
 
-    # find a good pair of pivots for first two steps 
-    pair_found = false
-    @inbounds for i in 1:n-1
-        for j in i+1:n
-            a = realdiag ? real(M[i,i]) : M[i,i]
-            b = M[i,j]
-            d = realdiag ? real(M[j,j]) : M[j,j]
-            det = a*d - b*b'
-            abs_a , abs_d = abs(a) , abs(d)
-            if abs1(det) > tol && !(abs_a < eps() && abs_d < eps())
-                # good pair of pivots 
-                if abs_a >= abs_d 
-                    _sym_swap!(M, 1, i)
-                    piv[1], piv[i] = piv[i], piv[1]
-                    if j != 1
-                        _sym_swap!(M, 2, j)
-                        piv[2], piv[j] = piv[j], piv[2]
-                    end
-                else
-                    _sym_swap!(M, 1, j)
-                    piv[1], piv[j] = piv[j], piv[1]
-                    if i != 1 
-                        _sym_swap!(M, 2, i)
-                        piv[2], piv[i] = piv[i], piv[2]
-                    end
-                end
-                pair_found = true
-                break
-            end
-        end
-        pair_found && break
-    end
-    
+    # find a good pair for first two pivots  
+    pair_found = _find_first_pair!(M, piv, tol)
+
     #if a good pair not found
     pair_found || return M, S, piv, BlasInt(1) 
      
     # α =(1 + sqrt(17))/8 threshold for 1×1 pivot admissibility
     # alpha = T <: AbstractFloat ? (1 + sqrt(T(17))) / T(8) : (16//25)
     alpha = 0.6403882032022076 
+    realdiag = T <: Complex 
 
     #main loop 
     @inbounds for k = 1:n
@@ -354,7 +384,6 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
         absmkk = abs(Mkk)
 
         # Find largest off-diagonal entry in column k
-
         
         if k > 2 # first two pivots are preselected
             colmax = zero(real(T))
@@ -374,10 +403,6 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
             
             # Decide whether 1×1 pivot is admissible
             if absmkk < alpha * colmax
-                # Consider symmetric interchange with IMAX
-                # We omit the BK rowmax test.
-                # Signed Cholesky prioritizes inertia/signature extraction
-                # and allows relaxed 1×1 pivot acceptance.
 
                 # Perform symmetric swap
                 _sym_swap!(M, k, imax)
@@ -402,7 +427,6 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
         if info != 0 
             # 2×2 pivot would be required
             S[k] = Int8(0)
-            println("Failed at imax = $imax") 
             return M, S, piv, BlasInt(k)
         end
 
