@@ -53,11 +53,13 @@ include("linalg.jl")
 export
     # Factorization types
     SignedChol,
-    SignedCholPivoted
+    SignedCholPivoted,
+    Pivoted
 
     # Main user-facing functions
     signedcholesky,
     signedcholesky!,
+
 
     # Linear algebra
     det,
@@ -65,7 +67,6 @@ export
     logabsdet,
     inertia,
     signature,
-    issuccess,
     isposdef
 
 # ------------------------------------------------------------
