@@ -11,6 +11,18 @@ export signedcholesky,
        issingular,
        isnonfactorizable
 
+
+
+"""
+    SignedCholPivoted
+
+Result of a signed Cholesky factorization with symmetric pivoting.
+Represents
+
+    A = Pᵀ * L * S * Lᵀ * P    or    A = Pᵀ * Uᵀ * S * U * P
+
+where `S` is diagonal with entries in {-1,0,+1}.
+"""
 struct SignedCholPivoted{T,S<:AbstractMatrix,P<:AbstractVector{<:Integer}} <: Factorization{T}
     factors::S
     signs::Vector{Int8}
@@ -24,7 +36,7 @@ struct SignedCholPivoted{T,S<:AbstractMatrix,P<:AbstractVector{<:Integer}} <: Fa
     end
 end
 
-#pivot type 
+# Marker type for pivoted signed Cholesky.
 struct Pivoted end
 
 
@@ -75,18 +87,6 @@ function Base.getproperty(F::SignedCholPivoted, s::Symbol)
 end
 
 
-# issuccess(F::SignedCholPivoted) = F.info == 0
-
-# rank(F::SignedCholPivoted) =
-#     F.info == 0 ? size(F.factors,1) : abs(F.info) - 1
-
-# signature(F::SignedCholPivoted) = (
-#     count(==(Int8(1)),  F.signs[1:rank(F)]),
-#     count(==(Int8(-1)), F.signs[1:rank(F)]),
-#     count(==(Int8(0)),  F.signs[1:rank(F)])
-# )
-
-
 function AbstractMatrix(F::SignedCholPivoted)
     n = size(F.factors,1)
     P = Matrix{eltype(F.factors)}(I, n, n)
@@ -125,14 +125,6 @@ Factorization{T}(F::SignedCholPivoted) where {T} = SignedCholPivoted{T}(F)
 copy(F::SignedCholPivoted) = SignedChol(copy(F.factors), copy(F.signs), F.uplo, F.piv, F.info)
 
 
-# function show(io::IO, mime::MIME{Symbol("text/plain")}, C::SignedCholPivoted)
-#     summary(io, C); println(io)
-#     # println(io, "$(C.uplo) factor with rank $(rank(C)):")
-#     show(io, mime, C.uplo == 'U' ? C.U : C.L)
-#     println(io, "\npermutation:")
-#     show(io, mime, C.p)
-# end
-
 function show(io::IO, mime::MIME{Symbol("text/plain")}, F::SignedCholPivoted)
     if issuccess(F)
         summary(io, F); println(io)
@@ -164,6 +156,8 @@ signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::RowMaximum; tol = 0.0, chec
 @deprecate signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::Val{true}; kwargs...) signedcholesky!(A, RowMaximum(); kwargs...) false
 
 
+# error handling for pivoted signed cholesky
+
 struct SignedCholPivotError <: Exception
     info::BlasInt
 end
@@ -188,19 +182,6 @@ function Base.showerror(io::IO, e::SignedCholPivotError)
     end
 end
 
-issuccess(info::Integer) = info == 0
-issingular(info::Integer) = info < 0
-isnonfactorizable(info::Integer) = info > 0
-
-issuccess(F::SignedCholPivoted) = F.info == 0
-issingular(F::SignedCholPivoted) = F.info < 0
-isnonfactorizable(F::SignedCholPivoted) = F.info > 0
-
-
-# --- Public API ---
-
-# for Symmetric / Hermitian wrappers (Strided) 
-
 function _check_pivoted_info(info::BlasInt)
     info == 0 && return nothing
 
@@ -213,41 +194,14 @@ function _check_pivoted_info(info::BlasInt)
     end
 end
 
+issuccess(info::Integer) = info == 0
+issingular(info::Integer) = info < 0
+isnonfactorizable(info::Integer) = info > 0
 
-function signedcholesky!(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true)
-    T = promote_type(eltype(M), Float64)
-    Mc = eigencopy_oftype(M.data, T)
-    # uplo = Mc.uplo == 'L' ? LowerTriangular : UpperTriangular
-    F, S, piv, info = _sgndchol_pivoted!(Mc)
-    check && _check_pivoted_info(info)
+issuccess(F::SignedCholPivoted) = F.info == 0
+issingular(F::SignedCholPivoted) = F.info < 0
+isnonfactorizable(F::SignedCholPivoted) = F.info > 0
 
-    return SignedCholPivoted(F, S, M.uplo, piv,info)
-end
-
-# Generic AbstractMatrix
-function signedcholesky!(M::AbstractMatrix,::Pivoted; check::Bool = true)
-    checksquare(M)
-
-    if eltype(M) <: Real
-        issymmetric(M) || throw(ArgumentError("matrix must be symmetric"))
-        Ms = Symmetric(M, :L)
-    else
-        ishermitian(M) || throw(ArgumentError("matrix must be Hermitian"))
-        Ms = Hermitian(M, :L)
-    end
-
-    return signedcholesky!(Ms, Pivoted(); check)
-end
-
-
-# signed cholesky!. Destructive methods for computing signed Cholesky factorization of real symmetric
-# or Hermitian matrixs with pivoting.
-
-signedcholesky(M::AbstractMatrix,::Pivoted;check::Bool = true) = 
-    signedcholesky!(copy(M), Pivoted(); check)
-
-signedcholesky(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true) = 
-    signedcholesky!(copy(M), Pivoted(); check)
 
 ## ==============================
 ## generic computation of signed cholesky (with pivoting)
@@ -255,6 +209,13 @@ signedcholesky(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true) =
 
 
 
+# LAPACK-style complex 1-norm
+cabs1(z::Complex) = abs(real(z)) + abs(imag(z))
+
+# cabsr(z::T) where T <: Complex = abs(real(z))
+
+
+# Symmetric row/column swap
 function _sym_swap!(M, k, p)
     k == p && return
     M[k,:], M[p,:] = M[p,:], M[k,:]
@@ -262,17 +223,14 @@ function _sym_swap!(M, k, p)
 end
 
 
-# ------------------------------------------------------------
+"""
+    _sgndchol!(x)
 
-# LAPACK-style complex absolute value functions
-function cabs1(z::T) where T <: Complex
-    return abs(real(z)) + abs(imag(z))
-end
-
-# function cabsr(z::T) where T <: Complex
-#     return abs(real(z))
-# end
-
+Compute signed Cholesky factor of a scalar.
+Returns `(f, s, info)` where
+- `x ≈ s * f^2`
+- `s ∈ {-1,0,+1}`
+"""
 
 function _sgndchol!(x::T) where T <: Number 
     rx = real(x)
@@ -287,26 +245,17 @@ function _sgndchol!(x::T) where T <: Number
     s  = rx > 0 ? Int8(1) : Int8(-1)
     fx = sqrt(ax)
     fval  = convert(promote_type(typeof(x), typeof(fx)), fx)
-    return (fval, s, BlasInt(rx != s*ax))
+    return (fval, s, BlasInt(0))
 end
+
 
 """
     _find_first_pair!(M, piv, tol)
 
-Searches for a pair (i, j) such that the 2×2 principal submatrix
-
-    [ M_ii  M_ij ]
-    [ M_ji  M_jj ]
-
-has nonzero determinant and also ensures that two successive 1×1 signed
-Cholesky pivots exist.
-
-If found, the matrix is symmetrically permuted so that this pair
-occupies positions with the larger-magnitude diagonal
-placed first.
+Find and permute a pair (i,j) such that the leading 2×2 block is nonsingular.
+The larger-magnitude diagonal is placed first.
 """
-function _find_first_pair!(M::AbstractMatrix{T},
-    piv::AbstractVector{<:Integer},tol) where T
+function _find_first_pair!(M::AbstractMatrix{T},piv,tol) where T
 
     n = checksquare(M)
     realdiag = T <: Complex
@@ -320,11 +269,7 @@ function _find_first_pair!(M::AbstractMatrix{T},
 
             if abs(det) > tol
                 # Decide ordering: larger diagonal first
-                if abs(ai) ≥ abs(aj)
-                    p1, p2 = i, j
-                else
-                    p1, p2 = j, i
-                end
+                p1, p2 = abs(ai) ≥ abs(aj) ? (i,j) : (j,i)
                 # perform swaps 
                 if p1 != 1
                     _sym_swap!(M, 1, p1)
@@ -449,6 +394,50 @@ end
 function _check_sgndchol(info::BlasInt)
     info == 0 || throw(SignedCholPivotError(info))
 end
+
+
+## ==============
+#  Public API 
+## ==============
+
+
+# for Symmetric / Hermitian wrappers (Strided) 
+
+function signedcholesky!(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true)
+    T = promote_type(eltype(M), Float64)
+    Mc = eigencopy_oftype(M.data, T)
+    # uplo = Mc.uplo == 'L' ? LowerTriangular : UpperTriangular
+    F, S, piv, info = _sgndchol_pivoted!(Mc)
+    check && _check_pivoted_info(info)
+
+    return SignedCholPivoted(F, S, M.uplo, piv,info)
+end
+
+# Generic AbstractMatrix
+function signedcholesky!(M::AbstractMatrix,::Pivoted; check::Bool = true)
+    checksquare(M)
+
+    if eltype(M) <: Real
+        issymmetric(M) || throw(ArgumentError("matrix must be symmetric"))
+        Ms = Symmetric(M, :L)
+    else
+        ishermitian(M) || throw(ArgumentError("matrix must be Hermitian"))
+        Ms = Hermitian(M, :L)
+    end
+
+    return signedcholesky!(Ms, Pivoted(); check)
+end
+
+
+# signed cholesky!. Destructive methods for computing signed Cholesky factorization of real symmetric
+# or Hermitian matrixs with pivoting.
+
+signedcholesky(M::AbstractMatrix,::Pivoted;check::Bool = true) = 
+    signedcholesky!(copy(M), Pivoted(); check)
+
+signedcholesky(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true) = 
+    signedcholesky!(copy(M), Pivoted(); check)
+
 
 
 # end #module 

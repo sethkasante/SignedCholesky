@@ -19,11 +19,14 @@
 # Utilities
 # ---------------
 
-@inline function _check_success(F)
+#construct union of SignedChol types
+const SignedChols = Union{SignedChol, SignedCholPivoted}
+
+@inline function _check_success(F::SignedChols)
     F.info == 0 || throw(ArgumentError("factorization was not successful"))
 end
 
-@inline function _diag_factor_sq(F, i)
+@inline function _diag_factor_sq(F::SignedChols, i)
     F.factors[i,i]^2
 end
 
@@ -48,7 +51,7 @@ the determinant is
 
 For pivoted factorizations, permutations do not affect the determinant.
 """
-function det(F)
+function det(F::SignedChols)
     _check_success(F)
     d = one(eltype(F.factors))
     @inbounds for i in eachindex(F.signs)

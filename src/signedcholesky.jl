@@ -25,7 +25,8 @@ import LinearAlgebra:
         checksquare, 
         RealHermSymComplexHerm, 
         BlasInt,  
-        eigencopy_oftype
+        eigencopy_oftype,
+        inertia
 
 import Base: 
         require_one_based_indexing, 
