@@ -33,9 +33,7 @@ import Base:
         copy, 
         show
 
-# ------------------
-# Include files
-# ------------------
+#--- Include files ----
 
 # Unpivoted signed Cholesky
 include("signedcholesky_nopivot.jl")
@@ -47,9 +45,7 @@ include("signedcholesky_pivot.jl")
 include("linalg.jl")
 
 
-# ----------------
-# Public API
-# ----------------
+#--- Public API ---
 
 export
     # Factorization types
@@ -70,10 +66,10 @@ export
     signature,
     isposdef
 
-# ------------------------------------------------------------
+
+
 # Version / internal helpers (optional)
-# ------------------------------------------------------------
 
 const _SIGNEDCHOL_VERSION = v"0.1.0"
 
-end # module SignedChol
+end # module SignedCholesky
