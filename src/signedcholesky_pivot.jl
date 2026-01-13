@@ -106,7 +106,7 @@ Array(F::SignedCholPivoted) = Matrix(F)
 
 
 
-SignedCholPivoted{T}(F::SignedCholPivoted) where {T} = F
+# SignedCholPivoted{T}(F::SignedCholPivoted) where {T} = F
 SignedCholPivoted{T}(F::SignedCholPivoted) where {T} =
     SignedCholPivoted{T,
         typeof(convert(AbstractMatrix{T}, F.factors)),
@@ -224,7 +224,7 @@ end
 
 
 """
-    _sgndchol!(x)
+    _sgndcholpiv!(x)
 
 Compute signed Cholesky factor of a scalar.
 Returns `(f, s, info)` where
@@ -232,7 +232,7 @@ Returns `(f, s, info)` where
 - `s ∈ {-1,0,+1}`
 """
 
-function _sgndchol!(x::T) where T <: Number 
+function _sgndcholpiv!(x::T) where T <: Number 
     rx = real(x)
     ax = abs(rx)
     #Use machine safe minimum for floating point numbers, and exact result otherwise (for rationals)
@@ -368,7 +368,7 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
         # absmkk = abs(Mkk)
 
         # Signed Cholesky step (scalar)
-        fk, sgn, info = _sgndchol!(Mkk)
+        fk, sgn, info = _sgndcholpiv!(Mkk)
         if info != 0 
             # 2×2 pivot would be required
             S[k] = Int8(0)
