@@ -231,8 +231,10 @@ end
 
 
 function signedcholesky!(M::RealHermSymComplexHerm, ::NoPivot = NoPivot(); check::Bool = true)
+    T = promote_type(eltype(M), Float64)
+    Mc = eigencopy_oftype(M.data, T)
     uplo = M.uplo == 'L' ? LowerTriangular : UpperTriangular
-    F, S, info = _sgndchol!(M.data, uplo)
+    F, S, info = _sgndchol!(Mc, uplo)
     check && checkzeropivots(info)
     return SignedChol(F.data, S, M.uplo, info)
 end
