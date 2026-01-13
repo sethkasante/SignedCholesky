@@ -15,9 +15,11 @@ where
 * $P$ is a permutation matrix arising from symmetric pivoting.
 
 
-The algorithm **restricts itself to 1×1 pivots**. If numerical stability would require a 2×2 pivot, the factorization terminates and reports failure.
+The algorithm **restricts itself to 1×1 pivots**. In the pivoted variant, the matrix is scanned to identify a permutation such that the leading $2\times2$ principal block admits a valid signed Cholesky step. If no such permutation exists --i.e. if numerical stability would require a genuine $2\times2$ pivot—the factorization terminates and reports failure rather than switching pivot size.
 
-<!-- This factorization is useful when:
+<!-- 
+
+ This factorization is useful when:
 *	the matrix is not positive definite
 *	but still admits an L S Lᵀ structure using 1×1 pivots only -->
 
