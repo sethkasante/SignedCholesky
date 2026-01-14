@@ -6,12 +6,9 @@
 [![Codecov](https://img.shields.io/badge/codecov-pending-lightgrey)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 
-`SignedCholesky.jl` is a **Julia package** for performing **signed Cholesky factorizations** of real symmetric and complex Hermitian matrices.  
-It extends the standard Cholesky factorization to **indefinite matrices** while preserving a simple *triangular–diagonal–triangular structure* using only **1×1 pivots**, making it a lightweight alternative to full Bunch-Kaufman factorization.
+`SignedCholesky.jl` is a **Julia package** for performing **signed Cholesky factorizations** of real symmetric and complex Hermitian matrices. It extends the standard Cholesky factorization to *indefinite matrices* while preserving a simple *triangular–diagonal–triangular structure* using only **1×1 pivots**, making it a lightweight alternative to full Bunch-Kaufman factorization.
 
 This package complements Julia’s built-in [`Cholesky`](https://docs.julialang.org/en/v1/stdlib/LinearAlgebra/#LinearAlgebra.Cholesky) and [`BunchKaufman`](https://docs.julialang.org/en/v1/stdlib/LinearAlgebra/#LinearAlgebra.BunchKaufman) factorizations in `LinearAlgebra` package.
-
-
 
 ### Overview
 For a real symmetric or complex Hermitian matrix $A$, the SignedCholesky factorization provides:
@@ -22,29 +19,7 @@ For a real symmetric or complex Hermitian matrix $A$, the SignedCholesky factori
 
 where $L$ / $U$ is (Upper / Lower) triangular, $P$ is a permutation matrix arising from symmetric pivoting, and $S$ is a diagonal matrix with entries in {-1,+1}.
 
-The algorithm **restricts itself to 1×1 pivots**. In the pivoted variant, the matrix is scanned to identify a permutation such that the leading $2\times2$ principal block admits a valid signed Cholesky step. If no such permutation exists --i.e. if numerical stability would require a genuine $2\times2$ pivot—the factorization terminates and reports failure rather than switching pivot size.
-
-<!-- 
-
- This factorization is useful when:
-*	the matrix is not positive definite
-*	but still admits an L S Lᵀ structure using 1×1 pivots only -->
-
-Typical use cases include:
-* Indefinite quadratic forms
-* Lorentzian or mixed-signature metrics
-* Constrained optimization and saddle-point systems
-
-
-### Limitations
-* Only 1×1 pivots are supported (matrices requiring 2×2 pivots are detected and rejected)
-* Currently focused on dense matrices
-* Generic (non-BLAS/LAPACK) element types are not yet supported
-
-
-### Features 
-* Compatible with Julia’s `LinearAlgebra.Factorization` interface
-
+The algorithm **restricts itself to 1×1 pivots**. In the pivoted variant, the matrix is scanned to identify a permutation such that the leading $2\times2$ principal block admits a valid signed Cholesky step. If no such permutation exists —i.e. if numerical stability would require a genuine $2\times2$ pivot— the factorization terminates and reports failure rather than switching pivot size.
 
 ### Installation ###
 
@@ -70,6 +45,27 @@ L = Fp.L        # triangular factor
 S = Fp.S        # diagonal signature matrix
 p = Fp.p        # pivot permutation
 ```
+<!-- 
+
+ This factorization is useful when:
+*	the matrix is not positive definite
+*	but still admits an L S Lᵀ structure using 1×1 pivots only -->
+
+Typical use cases include:
+* Indefinite quadratic forms
+* Lorentzian or mixed-signature metrics
+* Constrained optimization and saddle-point systems
+
+
+### Limitations
+* Only 1×1 pivots are supported (matrices requiring 2×2 pivots are detected and rejected)
+* Currently focused on dense matrices
+* Generic (non-BLAS/LAPACK) element types are not yet supported
+
+
+### Features 
+* Compatible with Julia’s `LinearAlgebra.Factorization` interface
+
 ### Error Handling
 
 The factorization fails if the matrix is non-factorizable with 1×1 pivots. The matrix may either be singular or would require 2×2 pivots for stable factorization
@@ -87,8 +83,6 @@ The factorization fails if the matrix is non-factorizable with 1×1 pivots. The 
 | Determinant | Easy | Easy and exact | More involved |
 | Inertia / signature | Trivial | Trivial (exact) | Trivial |
 | Numerical robustness | High (PD only) | Moderate | High |
-
-
 
 ### License
 
