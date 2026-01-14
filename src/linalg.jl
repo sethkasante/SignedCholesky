@@ -19,16 +19,16 @@
 # Utilities
 # ---------------
 
-#construct union of SignedChol types
-const SignedChols = Union{SignedChol, SignedCholPivoted}
+# #construct union of SignedChol types
+# const SignedChols = Union{SignedChol, SignedCholPivoted}
 
-@inline function _check_success(F::SignedChols)
-    F.info == 0 || throw(ArgumentError("factorization was not successful"))
-end
+# @inline function _check_success(F::SignedFactorization)
+#     F.info == 0 || throw(ArgumentError("factorization was not successful"))
+# end
 
-@inline function _diag_factor_sq(F::SignedChols, i)
-    F.factors[i,i]^2
-end
+# @inline function _diag_factor_sq(F::SignedFactorization, i)
+#     F.factors[i,i]^2
+# end
 
 # ------------------------------------------------------------
 # Determinant
@@ -51,8 +51,8 @@ the determinant is
 
 For pivoted factorizations, permutations do not affect the determinant.
 """
-function det(F::SignedChols)
-    _check_success(F)
+function det(F::SignedFactorization)
+    # _check_success(F)
     d = one(eltype(F.factors))
     @inbounds for i in eachindex(F.signs)
         d *= F.signs[i] * F.factors[i,i]^2
@@ -74,8 +74,8 @@ Return `(logabsdet, sign)` where
 
 computed from a signed Cholesky-type factorization.
 """
-function logabsdet(F)
-    _check_success(F)
+function logabsdet(F::SignedFactorization)
+    # _check_success(F)
 
     logabs = zero(real(eltype(F.factors)))
     sgn    = one(eltype(F.factors))
@@ -96,7 +96,7 @@ Compute `log(det(A))`.
 
 Throws an error if `det(A) ≤ 0`.
 """
-function logdet(F)
+function logdet(F::SignedFactorization)
     logabs, sgn = logabsdet(F)
     sgn > 0 || throw(DomainError(sgn, "determinant is non-positive"))
     return logabs
@@ -118,8 +118,8 @@ Return the inertia `(n₊, n₋, n₀)` of the matrix, where
 This is computed **exactly** from the sign vector of the signed
 Cholesky-type factorization.
 """
-function inertia(F)
-    _check_success(F)
+function inertia(F::SignedFactorization)
+    # _check_success(F)
 
     npos = 0
     nneg = 0
@@ -138,19 +138,19 @@ function inertia(F)
     return npos, nneg, nzero
 end
 
-"""
-    signature(F)
+# """
+#     signature(F)
 
-Return the signature of the matrix:
+# Return the signature of the matrix:
 
-    signature = n₊ − n₋
+#     signature = n₊ − n₋
 
-where `(n₊, n₋, n₀) = inertia(F)`.
-"""
-function signature(F)
-    npos, nneg, _ = inertia(F)
-    return npos - nneg
-end
+# where `(n₊, n₋, n₀) = inertia(F)`.
+# """
+# function signature(F::SignedFactorization)
+#     npos, nneg, _ = inertia(F)
+#     return npos - nneg
+# end
 
 # ------------------------------------------------------------
 # Positive definiteness

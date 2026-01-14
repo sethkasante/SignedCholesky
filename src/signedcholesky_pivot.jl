@@ -3,13 +3,13 @@
 # Signed Cholesky Factorization  with Pivoting#
 ##########################
 
-export signedcholesky,
-       signedcholesky!,
-       SignedCholPivoted,
-       Pivoted,
-       issuccess,
-       issingular,
-       isnonfactorizable
+# export signedcholesky,
+#        signedcholesky!,
+#        SignedCholPivoted,
+#        Pivoted,
+#        issuccess,
+#        issingular,
+#        isnonfactorizable
 
 
 
@@ -23,7 +23,7 @@ Represents
 
 where `S` is diagonal with entries in {-1,0,+1}.
 """
-struct SignedCholPivoted{T,S<:AbstractMatrix,P<:AbstractVector{<:Integer}} <: Factorization{T}
+struct SignedCholPivoted{T,S<:AbstractMatrix,P<:AbstractVector{<:Integer}} <: SignedFactorization{T}
     factors::S
     signs::Vector{Int8}
     uplo::Char
@@ -52,8 +52,9 @@ SignedCholPivoted(A::AbstractMatrix{T}, signs::Vector{Int8}, uplo::AbstractChar,
 
 # iteration for destructuring into components
 Base.iterate(F::SignedCholPivoted) =  (F.uplo == 'L' ? F.L : F.U, Val(1))
-Base.iterate(F::SignedCholPivoted,::Val{1}) = (F.S, Val(2))
-Base.iterate(F::SignedCholPivoted,::Val{2}) = nothing
+Base.iterate(F::SignedCholPivoted,::Val{1}) = (F.s, Val(2))
+Base.iterate(F::SignedCholPivoted,::Val{2}) = (F.p, Val(3))
+Base.iterate(F::SignedCholPivoted,::Val{3}) = nothing
 
 
 Base.propertynames(F::SignedCholPivoted, private::Bool=false) =
@@ -163,43 +164,24 @@ struct SignedCholPivotError <: Exception
 end
 
 function Base.showerror(io::IO, e::SignedCholPivotError)
-    k = abs(e.info)
+    k = e.info
 
-    if e.info < 0
-        print(io,
-            "SignedCholesky failed at pivot $k:\n",
-            "Matrix is singular (a zero pivot encountered).\n"
-        )
-    elseif e.info > 0
-        print(io,
-            "SignedCholesky failed at pivot $k:\n",
-            "Matrix is non-factorizable with 1×1 pivots: a stable factorization would require a 2×2 pivot\n"
-        )
-    else
-        print(io, "SignedCholesky error (unexpected info = 0).")
-    end
+    print(io, "SignedCholesky failed at pivot $k:\n",
+            "Matrix is non-factorizable with 1×1 pivots \n",
+            "Matrix may be singular or may require a 2×2 pivot for a stable factorization\n")
 end
 
 
 function _check_pivoted_info(info::BlasInt)
     info == 0 && return nothing
-
-    if info < 0
-        # singular: zero pivot detected
-        throw(SignedCholPivotError(info))
-    else
-        # info > 0 → 2×2 pivot required
-        throw(SignedCholPivotError(info))
-    end
+    throw(SignedCholPivotError(info))
 end
 
 issuccess(info::Integer) = info == 0
-issingular(info::Integer) = info < 0
-isnonfactorizable(info::Integer) = info > 0
+isnonfactorizable(info::Integer) = info != 0
 
 issuccess(F::SignedCholPivoted) = F.info == 0
-issingular(F::SignedCholPivoted) = F.info < 0
-isnonfactorizable(F::SignedCholPivoted) = F.info > 0
+isnonfactorizable(F::SignedCholPivoted) = F.info != 0
 
 
 ## ==============================
@@ -307,7 +289,6 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
     
     # machine safe minimum tolerance
     tol  = T <: AbstractFloat ? floatmin(real(T)) : zero(real(T)) 
-    
 
     # find a good pair for first two pivots  
     pair_found = _find_first_pair!(M, piv, tol)
@@ -335,14 +316,6 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
             if k < n
                 colmax, idx = findmax(abs1, view(M, (k+1):n, k))
                 imax = idx + k
-            end
-            # println("k=$k, absmkk=$absmkk, colmax=$colmax") #,imax=$imax")
-
-            # Singular column 
-            if max(absmkk, colmax) ≤ tol
-                S[k]   = Int8(0)
-                M[k,k] = zero(T)
-                return M, S, piv, BlasInt(-k)
             end
             
             # Decide whether 1×1 pivot is admissible
@@ -436,7 +409,5 @@ signedcholesky(M::AbstractMatrix,::Pivoted;check::Bool = true) =
 
 signedcholesky(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true) = 
     signedcholesky!(copy(M), Pivoted(); check)
-
-
 
 # end #module 

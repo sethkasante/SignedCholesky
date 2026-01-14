@@ -21,7 +21,7 @@ up to floating-point roundoff, where `F` is triangular and `signs ∈ {-1,0,1}`.
 - `info::BlasInt`: Status code (0 for success)
 """
 
-struct SignedChol{T,S<:AbstractMatrix} <: Factorization{T}
+struct SignedChol{T,S<:AbstractMatrix} <: SignedFactorization{T}
     factors::S
     signs::Vector{Int8}
     uplo::Char
