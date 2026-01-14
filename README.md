@@ -76,3 +76,8 @@ p = Fp.p        # pivot permutation
 If the factorization fails, the following conditions is reported:
 * Matrix is non-factorizable with 1×1 pivots. 
 * The matrix may either be singular or would require 2×2 pivots for stable factorization
+
+
+### License
+
+`SignedCholesky.jl` is released under the [MIT License](LICENSE.md).
