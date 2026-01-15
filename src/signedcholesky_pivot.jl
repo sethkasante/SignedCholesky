@@ -1,16 +1,9 @@
 
+#signedcholesky_pivot.jl
+
 ##########################
 # Signed Cholesky Factorization  with Pivoting#
 ##########################
-
-# export signedcholesky,
-#        signedcholesky!,
-#        SignedCholPivoted,
-#        Pivoted,
-#        issuccess,
-#        issingular,
-#        isnonfactorizable
-
 
 
 """
@@ -51,14 +44,12 @@ SignedCholPivoted(A::AbstractMatrix{T}, signs::Vector{Int8}, uplo::AbstractChar,
 
 
 # iteration for destructuring into components
-Base.iterate(F::SignedCholPivoted) =  (F.uplo == 'L' ? F.L : F.U, Val(1))
-Base.iterate(F::SignedCholPivoted,::Val{1}) = (F.s, Val(2))
-Base.iterate(F::SignedCholPivoted,::Val{2}) = (F.p, Val(3))
-Base.iterate(F::SignedCholPivoted,::Val{3}) = nothing
+Base.iterate(F::SignedCholPivoted) =  (F.uplo == 'L' ? F.L : F.U, 1)
+Base.iterate(F::SignedCholPivoted,i::Int) = i == 1 ? (F.s, 2) : i == 2 ? (F.p, 3) : nothing
 
 
 Base.propertynames(F::SignedCholPivoted, private::Bool=false) =
-    (:U, :L, :s, :S, :p, :P, (private ? fieldnames(typeof(F)) : ())...)
+    (:factors, :uplo, :signs, :piv, :U, :L, :s, :S, :p, :P, (private ? fieldnames(typeof(F)) : ())...)
 
 
 function Base.getproperty(F::SignedCholPivoted, s::Symbol)
@@ -89,8 +80,8 @@ end
 
 
 function AbstractMatrix(F::SignedCholPivoted)
-    n = size(F.factors,1)
-    P = Matrix{eltype(F.factors)}(I, n, n)
+    n = Base.size(F.factors,1)
+    P = Base.Matrix{eltype(F.factors)}(I, n, n)
     P = P[:, F.piv]   # apply permutation
 
     if F.uplo == 'L'
@@ -100,10 +91,9 @@ function AbstractMatrix(F::SignedCholPivoted)
     end
 end
 
-AbstractArray(F::SignedCholPivoted) = AbstractMatrix(F)
-Matrix(F::SignedCholPivoted) = Array(AbstractArray(F))
-Array(F::SignedCholPivoted) = Matrix(F)
-
+Base.Matrix(F::SignedFactorization) = AbstractMatrix(F)
+Base.Array(F::SignedFactorization) = AbstractMatrix(F)
+Base.AbstractArray(F::SignedFactorization) = AbstractMatrix(F)
 
 
 
@@ -123,7 +113,7 @@ Factorization{T}(F::SignedCholPivoted{T}) where {T} = F
 Factorization{T}(F::SignedCholPivoted) where {T} = SignedCholPivoted{T}(F)
 
 
-copy(F::SignedCholPivoted) = SignedChol(copy(F.factors), copy(F.signs), F.uplo, F.piv, F.info)
+copy(F::SignedCholPivoted) = SignedCholPivoted(copy(F.factors), copy(F.signs), F.uplo,copy(F.piv), F.info)
 
 
 function show(io::IO, mime::MIME{Symbol("text/plain")}, F::SignedCholPivoted)
@@ -143,7 +133,6 @@ end
 # generic computation for non-BLAS/LAPACK element types 
 
 
-
 # function signedcholesky!(A::RealHermSymComplexHerm, ::RowMaximum; tol = 0.0, check::Bool = true)
 #     F, S, p, rank = _sgndchol_pivoted!(A.data; tol)
 #     return SignedCholPivoted(F.data, S, A.uplo, p, rank, tol, BlasInt(0))
@@ -152,9 +141,9 @@ end
 
 ### Non BLAS/LAPACK element types (generic). Since generic fallback for pivoted signed Cholesky
 ### is not implemented yet we throw an error
-signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::RowMaximum; tol = 0.0, check::Bool = true) =
-    throw(ArgumentError("generic pivoted signed Cholesky factorization is not implemented yet"))
-@deprecate signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::Val{true}; kwargs...) signedcholesky!(A, RowMaximum(); kwargs...) false
+# signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::RowMaximum; tol = 0.0, check::Bool = true) =
+#     throw(ArgumentError("generic pivoted signed Cholesky factorization is not implemented yet"))
+# @deprecate signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::Val{true}; kwargs...) signedcholesky!(A, RowMaximum(); kwargs...) false
 
 
 # error handling for pivoted signed cholesky
@@ -168,7 +157,7 @@ function Base.showerror(io::IO, e::SignedCholPivotError)
 
     print(io, "SignedCholesky failed at pivot $k:\n",
             "Matrix is non-factorizable with 1×1 pivots \n",
-            "Matrix may be singular or may require a 2×2 pivot for a stable factorization\n")
+            "The matrix would require a 2×2 pivot for a stable factorization or may be singular\n")
 end
 
 
@@ -180,8 +169,9 @@ end
 issuccess(info::Integer) = info == 0
 isnonfactorizable(info::Integer) = info != 0
 
-issuccess(F::SignedCholPivoted) = F.info == 0
-isnonfactorizable(F::SignedCholPivoted) = F.info != 0
+function issuccess(F::SignedFactorization)
+    F.info == 0
+end
 
 
 ## ==============================
@@ -201,32 +191,6 @@ function _sym_swap!(M, k, p)
     k == p && return
     M[k,:], M[p,:] = M[p,:], M[k,:]
     M[:,k], M[:,p] = M[:,p], M[:,k]
-end
-
-
-"""
-    _sgndcholpiv!(x)
-
-Compute signed Cholesky factor of a scalar.
-Returns `(f, s, info)` where
-- `x ≈ s * f^2`
-- `s ∈ {-1,0,+1}`
-"""
-
-function _sgndcholpiv!(x::T) where T <: Number 
-    rx = real(x)
-    ax = abs(rx)
-    #Use machine safe minimum for floating point numbers, and exact result otherwise (for rationals)
-    tol = T <: AbstractFloat ? floatmin(T) : T(0)
-    # Treat tiny pivots as zero
-    if ax ≤ tol
-        return (zero(x), Int8(0), BlasInt(1))
-    end
-
-    s  = rx > 0 ? Int8(1) : Int8(-1)
-    fx = sqrt(ax)
-    fval  = convert(promote_type(typeof(x), typeof(fx)), fx)
-    return (fval, s, BlasInt(0))
 end
 
 
@@ -287,8 +251,10 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
     # Use complex 1-norm for pivot selection, as in LAPACK
     abs1 = T <: Real ? abs : cabs1
     
-    # machine safe minimum tolerance
-    tol  = T <: AbstractFloat ? floatmin(real(T)) : zero(real(T)) 
+    # robust tolerance
+    tol = T <: AbstractFloat ? max(floatmin(T), eps(real(T))) : T(0) 
+
+    nomM = maximum(abs.(M))
 
     # find a good pair for first two pivots  
     pair_found = _find_first_pair!(M, piv, tol)
@@ -339,7 +305,7 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
         # absmkk = abs(Mkk)
 
         # Signed Cholesky step (scalar)
-        fk, sgn, info = _sgndcholpiv!(Mkk)
+        fk, sgn, info = _sgndchol!(Mkk,nomM)
         if info != 0 
             # 2×2 pivot would be required
             S[k] = Int8(0)
@@ -409,4 +375,4 @@ signedcholesky(M::AbstractMatrix,::Pivoted;check::Bool = true) =
 signedcholesky(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true) = 
     signedcholesky!(copy(M), Pivoted(); check)
 
-# end #module 
+

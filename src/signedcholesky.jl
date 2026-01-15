@@ -38,7 +38,10 @@ import LinearAlgebra:
 import Base: 
         require_one_based_indexing, 
         copy, 
-        show
+        show,
+        permute!,
+        invpermute!,
+        *
 
 #--- Include files ----
 
@@ -64,10 +67,11 @@ export
     logdet,
     logabsdet,
     inertia,
-    isposdef
+    isposdef,
+    ldiv!,
+    mul!
 
 # Version / internal helpers (optional)
-
-const _SIGNEDCHOL_VERSION = v"0.1.0"
+# const _SIGNEDCHOL_VERSION = v"0.1.0"
 
 end # module SignedCholesky

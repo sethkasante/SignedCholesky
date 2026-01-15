@@ -1,4 +1,5 @@
 
+#signedcholesky_nopivot.jl
 
 ##########################
 # Signed Cholesky Factorization #
@@ -57,13 +58,12 @@ SignedChol(L::LowerTriangular{T}) where {T} = SignedChol{T,typeof(L.data)}(L.dat
 
 
 # Iteration 
-Base.iterate(F::SignedChol) = (F.uplo == 'L' ? F.L : F.U, Val(1))
-Base.iterate(F::SignedChol, ::Val{1}) = (F.s, Val(2))
-Base.iterate(F::SignedChol, ::Val{2}) = nothing
+Base.iterate(F::SignedChol) = (F.uplo == 'L' ? F.L : F.U, 1)
+Base.iterate(F::SignedChol, i::Int) = i == 1 ? (F.s, 2) : nothing
 
 # Properties 
 Base.propertynames(F::SignedChol, private::Bool=false) =
-    (:U, :L, :s, :S, (private ? fieldnames(typeof(F)) : ())...)
+    (:factors, :uplo, :signs, :U, :L, :s, :S, (private ? fieldnames(typeof(F)) : ())...)
 
 """
     Base.getproperty(F::SignedChol, s::Symbol)
@@ -112,10 +112,6 @@ function AbstractMatrix(F::SignedChol)
     end
 end
 
-AbstractArray(F::SignedChol) = AbstractMatrix(F)
-Matrix(F::SignedChol) = Array(AbstractArray(F))
-Array(F::SignedChol) = Matrix(F)
-
 
 ## ==============================
 ## generic computation of signed cholesky (no pivoting)
@@ -131,22 +127,23 @@ Compute signed Cholesky decomposition of a scalar.
 """
 # _sgndchol!. Internal methods for calling unpivoted signed Cholesky
 
-function _sgndchol!(x::T) where T <: Number 
+function _sgndchol!(x::T, normA::Real=one(T)) where T <: Number
     rx = real(x)
     ax = abs(rx)
-    #Use machine safe minimum for floating point numbers, and exact result otherwise (for rationals)
-    tol = T <: AbstractFloat ? floatmin(T) : T(0)
-    # Treat tiny pivots as zero
-    if ax ≤ tol
+
+    # relative tolerance scaled to matrix magnitude
+    tol = max(eps(T) * normA, floatmin(T))
+
+    # treat tiny pivots as zero
+    if ax <= tol
         return (zero(x), Int8(0), BlasInt(1))
     end
 
     s  = rx > 0 ? Int8(1) : Int8(-1)
     fx = sqrt(ax)
     fval  = convert(promote_type(typeof(x), typeof(fx)), fx)
-    return (fval, s, BlasInt(rx != s*ax))
+    return (fval, s, BlasInt(0))
 end
-
 
 """
     _sgndchol!(M, ::Type{LowerTriangular})
@@ -162,6 +159,9 @@ function _sgndchol!(M::AbstractMatrix, ::Type{LowerTriangular})
     S = Vector{Int8}(undef,n)
     realdiag = eltype(M) <: Complex
 
+    # Compute matrix norm for relative pivot tolerance
+    normM = maximum(abs.(M))
+
     @inbounds begin
         for k = 1:n
             Mkk = realdiag ? real(M[k,k]) : M[k,k]
@@ -170,7 +170,7 @@ function _sgndchol!(M::AbstractMatrix, ::Type{LowerTriangular})
                 Mkk -= S[i] * (realdiag ? abs2(M[k,i]) : M[k,i]*M[k,i]')
             end
                       
-            Mkk, sgn, info = _sgndchol!(Mkk)
+            Mkk, sgn, info = _sgndchol!(Mkk,normM)
             info != 0 && throw(ZeroPivotException(k))
 
             M[k,k] = Mkk
@@ -312,12 +312,14 @@ function show(io::IO, mime::MIME{Symbol("text/plain")}, C::SignedChol)
 end
 
 
+
 copy(C::SignedChol) = SignedChol(copy(C.factors), copy(C.signs), C.uplo, C.info)
 
 size(C::SignedChol) = size(C.factors)
 size(C::SignedChol, dim::Integer) = size(C.factors, dim)
 
-issuccess(C::SignedChol) = C.info == 0
+Base.size(F::SignedFactorization) = size(F.factors)
+Base.eltype(F::SignedFactorization) = eltype(F.factors)
 
 # zero pivot exception 
 
