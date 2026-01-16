@@ -35,7 +35,7 @@ using SignedCholesky
 
 A = [ 2 1; 1 -1 ]
 
-F = signedcholesky(A) #no-pivot version (default)
+F = signedcholesky(A) # no-pivot version (default)
 L = F.L        # Lower triangular matrix
 S = F.s        # diagonal signature vector
 
@@ -43,17 +43,11 @@ S = F.s        # diagonal signature vector
 Fp = signedcholesky(A, Pivoted()) 
 fL,fs,fp = Fp   # triangular factor, sign vector, permutation vector
 
-
-# Linear Algebra
-inertia(Fp) #inertia
+# Linear Algebra utilities
+inertia(Fp) # inertia
 det(Fp) # determinant
 x = Fp \ [1.0, 2.0] # linear solve 
 ```
-<!-- 
-
- This factorization is useful when:
-*	the matrix is not positive definite
-*	but still admits an L S Lᵀ structure using 1×1 pivots only -->
 
 Typical use cases include:
 * Indefinite quadratic forms
