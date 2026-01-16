@@ -114,7 +114,7 @@ end
 
 
 ## ==============================
-## generic computation of signed cholesky (no pivoting)
+## generic computation of signedcholesky (no pivoting)
 ## ============================== 
 
 """
@@ -225,11 +225,6 @@ end
 
 
 # --- Public API ---
-
-# for StridedMatrices, check that matrix is symmetric/Hermitian
-
-# signed cholesky!. Destructive methods for computing signed Cholesky factorization of real symmetric
-# or Hermitian matrix
 ## No pivoting (default) 
 
 
@@ -244,7 +239,7 @@ function signedcholesky!(M::RealHermSymComplexHerm, ::NoPivot = NoPivot(); check
 end
 
 
-### for AbstractMatrix, check that matrix is symmetric/Hermitian
+## for AbstractMatrix, check that matrix is symmetric/Hermitian
 function signedcholesky!(M::AbstractMatrix,::NoPivot = NoPivot();check::Bool = true)
     checksquare(M)
 
@@ -273,12 +268,6 @@ signedcholesky(M::RealHermSymComplexHerm, args...; kwargs...) =
 
 ### for AbstractMatrix, check that matrix is symmetric/Hermitian
 
-
-
-# cholesky. Non-destructive methods for computing Cholesky factorization of real symmetric
-# or Hermitian matrix
-## No pivoting (default)
-
 _signedcholesky(M::AbstractMatrix, args...; kwargs...) = signedcholesky!(M, args...; kwargs...)
 
 signedcholesky(M::AbstractMatrix, ::NoPivot=NoPivot(); check::Bool = true) =
@@ -290,8 +279,6 @@ function signedcholesky(M::AbstractMatrix{Float16}, ::NoPivot=NoPivot(); check::
     return SignedChol{Float16}(X)
 end
 @deprecate signedcholesky(M::Union{StridedMatrix{Float16},RealHermSymComplexHerm{Float16,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(M, NoPivot(); check) false
-# allow packages like SparseArrays.jl to hook into here and redirect to out-of-place `cholesky`
-
 
 
 ## Number
@@ -301,7 +288,6 @@ function signedcholesky(x::Number)
     s = fill(S, 1)
     SignedChol(xf,s, 'L', info)
 end
-
 
 function show(io::IO, mime::MIME{Symbol("text/plain")}, C::SignedChol)
     if issuccess(C)
@@ -314,7 +300,6 @@ function show(io::IO, mime::MIME{Symbol("text/plain")}, C::SignedChol)
         print(io, "Failed factorization of type $(typeof(C))")
     end
 end
-
 
 
 copy(C::SignedChol) = SignedChol(copy(C.factors), copy(C.signs), C.uplo, C.info)
