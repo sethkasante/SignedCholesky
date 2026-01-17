@@ -1,6 +1,7 @@
 
 #signedcholesky_nopivot.jl
 
+
 ##########################
 # Signed Cholesky Factorization #
 ##########################
@@ -19,14 +20,14 @@ up to floating-point roundoff, where `F` is triangular and `signs ∈ {-1,0,1}`.
 - `factors::S`: Storage for the triangular factor F
 - `signs::Vector{Int8}`: Sign corrections for each diagonal element
 - `uplo::Char`: 'L' for lower or 'U' for upper triangular storage
-- `info::BlasInt`: Status code (0 for success)
+- `info::Int32`: Status code (0 for success)
 """
 
 struct SignedChol{T,S<:AbstractMatrix} <: SignedFactorization{T}
     factors::S
     signs::Vector{Int8}
     uplo::Char
-    info::BlasInt
+    info::Int32
 
     function SignedChol{T,S}(factors,signs, uplo, info) where {T,S<:AbstractMatrix}
         require_one_based_indexing(factors)
@@ -89,7 +90,7 @@ end
 
 # Type conversions and copies
 choltype(A) = promote_type(typeof(sqrt(oneunit(eltype(A)))), Float32)
-cholcopy(A::AbstractMatrix) = eigencopy_oftype(A, choltype(A))
+cholcopy(A::AbstractMatrix) = _promote_copy(A, choltype(A))
 
 
 SignedChol{T}(F::SignedChol) where {T} =
@@ -138,7 +139,7 @@ function _sgndchol!(x::T, normA::Real = one(real(T))) where T <: Number
     end
 
     if ax <= tol  # treat tiny pivots as zero
-        return (zero(x), Int8(0), BlasInt(1))
+        return (zero(x), Int8(0), Int32(1))
     end
 
     s  = rx > 0 ? Int8(1) : Int8(-1)
@@ -146,7 +147,7 @@ function _sgndchol!(x::T, normA::Real = one(real(T))) where T <: Number
 
     fval = convert(promote_type(typeof(x), typeof(fx)), fx)
 
-    return (fval, s, BlasInt(0))
+    return (fval, s, Int32(0))
 end
 
 """
@@ -159,7 +160,7 @@ Throws `ZeroPivotException` if a zero pivot is encountered.
 """
 function _sgndchol!(M::AbstractMatrix, ::Type{LowerTriangular})
     require_one_based_indexing(M)
-    n = checksquare(M)
+    n = _checksquare(M)
     S = Vector{Int8}(undef,n)
     realdiag = eltype(M) <: Complex
 
@@ -189,12 +190,12 @@ function _sgndchol!(M::AbstractMatrix, ::Type{LowerTriangular})
             end
         end
     end
-    return LowerTriangular(M), S, convert(BlasInt, 0)
+    return LowerTriangular(M), S, convert(Int32, 0)
 end
 
 function _sgndchol!(M::AbstractMatrix, ::Type{UpperTriangular})
     require_one_based_indexing(M)
-    n = checksquare(M)
+    n = _checksquare(M)
     S = Vector{Int8}(undef, n)
     realdiag = eltype(M) <: Complex
 
@@ -220,7 +221,7 @@ function _sgndchol!(M::AbstractMatrix, ::Type{UpperTriangular})
         end
     end
 
-    return UpperTriangular(M), S, BlasInt(0)
+    return UpperTriangular(M), S, Int32(0)
 end
 
 
@@ -229,9 +230,9 @@ end
 
 
 
-function signedcholesky!(M::RealHermSymComplexHerm, ::NoPivot = NoPivot(); check::Bool = true)
+function signedcholesky!(M::RealHmtSymComplexHmt, ::NoPivot = NoPivot(); check::Bool = true)
     T = promote_type(eltype(M), Float64)
-    Mc = eigencopy_oftype(M.data, T)
+    Mc = _promote_copy(M.data, T)
     uplo = M.uplo == 'L' ? LowerTriangular : UpperTriangular
     F, S, info = _sgndchol!(Mc, uplo)
     check && checkzeropivots(info)
@@ -241,7 +242,7 @@ end
 
 ## for AbstractMatrix, check that matrix is symmetric/Hermitian
 function signedcholesky!(M::AbstractMatrix,::NoPivot = NoPivot();check::Bool = true)
-    checksquare(M)
+    _checksquare(M)
 
     # symmetry / Hermitian check
     if eltype(M) <: Real
@@ -256,13 +257,13 @@ function signedcholesky!(M::AbstractMatrix,::NoPivot = NoPivot();check::Bool = t
 end
 
 @deprecate signedcholesky!(M::StridedMatrix, ::Val{false}; check::Bool = true) signedcholesky!(M, NoPivot(); check) false
-@deprecate signedcholesky!(M::RealHermSymComplexHerm, ::Val{false}; check::Bool = true) signedcholesky!(M, NoPivot(); check) false
+@deprecate signedcholesky!(M::RealHmtSymComplexHmt, ::Val{false}; check::Bool = true) signedcholesky!(M, NoPivot(); check) false
 
 function signedcholesky(M::AbstractMatrix, args...;kwargs...)
     return signedcholesky!(copy(M), args...; kwargs...)
 end
 
-signedcholesky(M::RealHermSymComplexHerm, args...; kwargs...) =
+signedcholesky(M::RealHmtSymComplexHmt, args...; kwargs...) =
     signedcholesky!(copy(M), args...; kwargs...)
 
 
@@ -272,13 +273,13 @@ _signedcholesky(M::AbstractMatrix, args...; kwargs...) = signedcholesky!(M, args
 
 signedcholesky(M::AbstractMatrix, ::NoPivot=NoPivot(); check::Bool = true) =
     _signedcholesky(cholcopy(M); check)
-@deprecate signedcholesky(M::Union{StridedMatrix,RealHermSymComplexHerm{<:Real,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(M, NoPivot(); check) false
+@deprecate signedcholesky(M::Union{StridedMatrix,RealHmtSymComplexHmt{<:Real,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(M, NoPivot(); check) false
 
 function signedcholesky(M::AbstractMatrix{Float16}, ::NoPivot=NoPivot(); check::Bool = true)
     X = _signedcholesky(cholcopy(M); check = check)
     return SignedChol{Float16}(X)
 end
-@deprecate signedcholesky(M::Union{StridedMatrix{Float16},RealHermSymComplexHerm{Float16,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(M, NoPivot(); check) false
+@deprecate signedcholesky(M::Union{StridedMatrix{Float16},RealHmtSymComplexHmt{Float16,<:StridedMatrix}}, ::Val{false}; check::Bool = true) signedcholesky(M, NoPivot(); check) false
 
 
 ## Number
@@ -322,5 +323,5 @@ Base.showerror(io::IO, e::ZeroPivotException) =
             "Try a pivoted factorization using `signedcholesky(M,Pivoted())`.")
 
 
-checkzeropivots(info::BlasInt) =
+checkzeropivots(info::Int32) =
     info > 0 ? throw(ZeroPivotException(info)) : nothing

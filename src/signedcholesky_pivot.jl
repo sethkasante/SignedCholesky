@@ -21,7 +21,7 @@ struct SignedCholPivoted{T,S<:AbstractMatrix,P<:AbstractVector{<:Integer}} <: Si
     signs::Vector{Int8}
     uplo::Char
     piv::P
-    info::BlasInt
+    info::Int32
 
     function SignedCholPivoted{T,S,P}(factors, signs, uplo, piv, info) where {T,S<:AbstractMatrix,P<:AbstractVector}
         require_one_based_indexing(factors)
@@ -132,24 +132,10 @@ end
 
 # generic computation for non-BLAS/LAPACK element types 
 
-
-# function signedcholesky!(A::RealHermSymComplexHerm, ::RowMaximum; tol = 0.0, check::Bool = true)
-#     F, S, p, rank = _sgndchol_pivoted!(A.data; tol)
-#     return SignedCholPivoted(F.data, S, A.uplo, p, rank, tol, BlasInt(0))
-# end
-# @deprecate signedcholesky!(A::RealHermSymComplexHerm, ::Val{true}; kwargs...) signedcholesky!(A, RowMaximum(); kwargs...) false
-
-### Non BLAS/LAPACK element types (generic). Since generic fallback for pivoted signed Cholesky
-### is not implemented yet we throw an error
-# signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::RowMaximum; tol = 0.0, check::Bool = true) =
-#     throw(ArgumentError("generic pivoted signed Cholesky factorization is not implemented yet"))
-# @deprecate signedcholesky!(A::RealHermSymComplexHerm{<:Real}, ::Val{true}; kwargs...) signedcholesky!(A, RowMaximum(); kwargs...) false
-
-
 # error handling for pivoted signed cholesky
 
 struct SignedCholPivotError <: Exception
-    info::BlasInt
+    info::Int32
 end
 
 function Base.showerror(io::IO, e::SignedCholPivotError)
@@ -161,7 +147,7 @@ function Base.showerror(io::IO, e::SignedCholPivotError)
 end
 
 
-function _check_pivoted_info(info::BlasInt)
+function _check_pivoted_info(info::Int32)
     info == 0 && return nothing
     throw(SignedCholPivotError(info))
 end
@@ -202,7 +188,7 @@ The larger-magnitude diagonal is placed first.
 """
 function _find_first_pair!(M::AbstractMatrix{T}, piv, tol) where T
 
-    n = checksquare(M)
+    n = _checksquare(M)
     realdiag = T <: Complex
 
     @inbounds for i in 1:n-1
@@ -246,9 +232,9 @@ If a 2×2 pivot is required for stability, the routine terminates with info > 0.
 """
 
 function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
-    n = checksquare(M)
+    n = _checksquare(M)
     #permutation vector
-    piv = collect(BlasInt, 1:n)
+    piv = collect(Int32, 1:n)
     # sign vector 
     S   = Vector{Int8}(undef, n)
 
@@ -264,7 +250,7 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
     pair_found = _find_first_pair!(M, piv, tol)
 
     #if a good pair not found
-    pair_found || return M, S, piv, BlasInt(1) 
+    pair_found || return M, S, piv, Int32(1) 
      
     # α =(1 + sqrt(17))/8 threshold for 1×1 pivot admissibility
     # alpha = T <: AbstractFloat ? (1 + sqrt(T(17))) / T(8) : (16//25)
@@ -313,7 +299,7 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
         if info != 0 
             # 2×2 pivot would be required
             S[k] = Int8(0)
-            return M, S, piv, BlasInt(k)
+            return M, S, piv, Int32(k)
         end
 
         S[k]   = sgn
@@ -329,10 +315,10 @@ function _sgndchol_pivoted!(M::AbstractMatrix{T}) where T
         end
     end
 
-    return M, S, piv, BlasInt(0)
+    return M, S, piv, Int32(0)
 end
 
-function _check_sgndchol(info::BlasInt)
+function _check_sgndchol(info::Int32)
     info == 0 || throw(SignedCholPivotError(info))
 end
 
@@ -344,9 +330,9 @@ end
 
 # for Symmetric / Hermitian wrappers (Strided) 
 
-function signedcholesky!(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true)
+function signedcholesky!(M::RealHmtSymComplexHmt,::Pivoted;check::Bool = true)
     T = promote_type(eltype(M), Float64)
-    Mc = eigencopy_oftype(M.data, T)
+    Mc = _promote_copy(M.data, T)
     # uplo = Mc.uplo == 'L' ? LowerTriangular : UpperTriangular
     F, S, piv, info = _sgndchol_pivoted!(Mc)
     check && _check_pivoted_info(info)
@@ -356,7 +342,7 @@ end
 
 # Generic AbstractMatrix
 function signedcholesky!(M::AbstractMatrix,::Pivoted; check::Bool = true)
-    checksquare(M)
+    _checksquare(M)
 
     if eltype(M) <: Real
         issymmetric(M) || throw(ArgumentError("matrix must be symmetric"))
@@ -376,7 +362,7 @@ end
 signedcholesky(M::AbstractMatrix,::Pivoted;check::Bool = true) = 
     signedcholesky!(copy(M), Pivoted(); check)
 
-signedcholesky(M::RealHermSymComplexHerm,::Pivoted;check::Bool = true) = 
+signedcholesky(M::RealHmtSymComplexHmt,::Pivoted;check::Bool = true) = 
     signedcholesky!(copy(M), Pivoted(); check)
 
 

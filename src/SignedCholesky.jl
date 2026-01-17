@@ -26,21 +26,18 @@ using LinearAlgebra
 # abstract type 
 abstract type SignedFactorization{T} <: Factorization{T} end
 
-export Symmetric, Hermitian
 
-import LinearAlgebra: 
-        checksquare, 
-        RealHermSymComplexHerm, 
-        BlasInt,  
-        eigencopy_oftype,
-        inertia,
-        det,
-        logdet,
-        logabsdet,
-        inertia,
-        isposdef,
-        ldiv!
+#LinearAlgebra functions (not imported): 
+RealHmtSymComplexHmt = Union{Hermitian{T, S}, Hermitian{Complex{T}, S}, Symmetric{T, S}} where {T<:Real, S}
 
+function _checksquare(M)
+    sizeM = Base.size(M)
+    length(sizeM) == 2 || throw(DimensionMismatch(lazy"input is not a matrix: dimensions are $sizeM"))
+    sizeM[1] == sizeM[2] || throw(DimensionMismatch(lazy"matrix is not square: dimensions are $sizeM"))
+    return sizeM[1]
+end
+
+_promote_copy(A::AbstractArray, ::Type{T}) where {T} = copyto!(similar(A, T, Base.size(A)), A)
 
 import Base: 
         require_one_based_indexing, 
@@ -75,8 +72,5 @@ export
     inertia,
     isposdef,
     ldiv!
-
-# Version / internal helpers (optional)
-# const _SIGNEDCHOL_VERSION = v"0.1.0"
 
 end # module SignedCholesky

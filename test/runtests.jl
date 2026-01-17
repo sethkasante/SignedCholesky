@@ -64,7 +64,7 @@ end
 
     @test SignedCholesky.det(F) ≈ LinearAlgebra.det(A)
 
-    pos, neg, zero = inertia(F)
+    pos, neg, zero = SignedCholesky.inertia(F)
     eigs = eigvals(A)
 
     @test pos == count(>(0), eigs)
