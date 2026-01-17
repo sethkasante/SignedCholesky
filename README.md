@@ -79,7 +79,7 @@ The factorization fails if the matrix is non-factorizable with 1×1 pivots. The 
 | Factorization form | `A = L Lᵀ` | `A = L S Lᵀ` | `A = L D Lᵀ` |
 | Diagonal structure | Positive diagonal | `S ∈ {−1,+1}` | Block diagonal  (1×1, 2×2) |
 | Determinant | Easy | Easy and exact | More involved |
-| Inertia / signature | Trivial | Trivial (exact) | Trivial |
+| Inertia / signature | Trivial (ones) | Trivial (exact, mixed) | Trivial (mixed) |
 | Numerical robustness | High (PD only) | Moderate | High |
 
 ### License
